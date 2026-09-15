@@ -1,0 +1,6 @@
+datasets
+pandas
+google-generativeai
+tqdm
+python-dotenv
+duckduckgo-search
