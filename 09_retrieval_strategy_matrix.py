@@ -132,11 +132,22 @@ def main():
         print(f"Error: {input_file} not found.")
         return
         
-    df = pd.read_csv(input_file)
-    
-    # 500 questions exploratory cohort (deterministic seed)
+    if 'language_name' not in df.columns:
+        raise ValueError("CRITICAL ERROR: 'language_name' column missing from dataset. Cannot perform multilingual analysis.")
+        
+    # 500 questions exploratory cohort (deterministic seed, stratified by language)
     SAMPLE_SIZE = min(500, len(df))
-    df_sample = df.sample(n=SAMPLE_SIZE, random_state=42)
+    
+    # Proportional stratified sampling
+    df_sample = df.groupby('language_name', group_keys=False).apply(
+        lambda x: x.sample(frac=SAMPLE_SIZE/len(df), random_state=42)
+    )
+    # Adjust to exact SAMPLE_SIZE if rounding caused a mismatch
+    if len(df_sample) < SAMPLE_SIZE:
+        needed = SAMPLE_SIZE - len(df_sample)
+        df_sample = pd.concat([df_sample, df.drop(df_sample.index).sample(n=needed, random_state=42)])
+    elif len(df_sample) > SAMPLE_SIZE:
+        df_sample = df_sample.sample(n=SAMPLE_SIZE, random_state=42)
     
     # Resume checkpoint logic
     existing_questions = set()
@@ -155,7 +166,7 @@ def main():
     for idx, row in tqdm(df_sample.iterrows(), total=SAMPLE_SIZE):
         question = row['question']
         reference = row['answer']
-        lang = row.get('language_name', 'Hindi')
+        lang = row['language_name']
         
         if question in existing_questions:
             continue
@@ -202,9 +213,9 @@ def main():
             else:
                 eval_metrics = {"entity_match": 0, "cultural_relevance": 0, "evidence_sufficiency": 0}
                 
-            record[f"entity_match_{strategy_name}"] = eval_metrics.get("entity_match", 0)
-            record[f"relevance_{strategy_name}"] = eval_metrics.get("cultural_relevance", 0)
-            record[f"evidence_{strategy_name}"] = eval_metrics.get("evidence_sufficiency", 0)
+            record[f"entity_match_context_{strategy_name}"] = eval_metrics.get("entity_match", 0)
+            record[f"cultural_relevance_context_{strategy_name}"] = eval_metrics.get("cultural_relevance", 0)
+            record[f"evidence_sufficiency_context_{strategy_name}"] = eval_metrics.get("evidence_sufficiency", 0)
             
             time.sleep(1) # DuckDuckGo rate limiting
             
