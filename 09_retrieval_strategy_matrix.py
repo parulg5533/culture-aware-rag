@@ -93,8 +93,13 @@ def retrieve_context(query, region="in-en"):
     return result_data
 
 def evaluate_retrieval(model, question, reference, context):
+    result = {
+        "entity_match": 0, "cultural_relevance": 0, "evidence_sufficiency": 0,
+        "judge_status": "ERROR", "judge_error": "Empty context"
+    }
     if not context.strip():
-        return {"entity_match": 0, "cultural_relevance": 0, "evidence_sufficiency": 0}
+        result["judge_status"] = "SUCCESS_EMPTY_CONTEXT"
+        return result
         
     prompt = f"""
     You are a blinded retrieval evaluator. Evaluate if the retrieved context contains evidence sufficient to support the reference answer.
@@ -116,9 +121,14 @@ def evaluate_retrieval(model, question, reference, context):
         if text.startswith("```json"): text = text[7:]
         if text.startswith("```"): text = text[3:]
         if text.endswith("```"): text = text[:-3]
-        return json.loads(text.strip())
-    except Exception:
-        return {"entity_match": 0, "cultural_relevance": 0, "evidence_sufficiency": 0}
+        parsed = json.loads(text.strip())
+        parsed["judge_status"] = "SUCCESS"
+        parsed["judge_error"] = "None"
+        return parsed
+    except Exception as e:
+        result["judge_status"] = "ERROR"
+        result["judge_error"] = str(e)
+        return result
 
 def main():
     sys.stdout.reconfigure(encoding='utf-8')
@@ -132,6 +142,8 @@ def main():
         print(f"Error: {input_file} not found.")
         return
         
+    df = pd.read_csv(input_file)
+    
     if 'language_name' not in df.columns:
         raise ValueError("CRITICAL ERROR: 'language_name' column missing from dataset. Cannot perform multilingual analysis.")
         
@@ -211,11 +223,13 @@ def main():
             if res_data["status"] == "SUCCESS_WITH_RESULTS":
                 eval_metrics = evaluate_retrieval(model, question, reference, context)
             else:
-                eval_metrics = {"entity_match": 0, "cultural_relevance": 0, "evidence_sufficiency": 0}
+                eval_metrics = {"entity_match": 0, "cultural_relevance": 0, "evidence_sufficiency": 0, "judge_status": "SKIPPED", "judge_error": "None"}
                 
             record[f"entity_match_context_{strategy_name}"] = eval_metrics.get("entity_match", 0)
             record[f"cultural_relevance_context_{strategy_name}"] = eval_metrics.get("cultural_relevance", 0)
             record[f"evidence_sufficiency_context_{strategy_name}"] = eval_metrics.get("evidence_sufficiency", 0)
+            record[f"judge_status_{strategy_name}"] = eval_metrics.get("judge_status", "UNKNOWN")
+            record[f"judge_error_{strategy_name}"] = eval_metrics.get("judge_error", "None")
             
             time.sleep(1) # DuckDuckGo rate limiting
             
