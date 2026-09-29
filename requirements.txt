@@ -1,6 +1,6 @@
 datasets
 pandas
-google-generativeai
+google-genai
 tqdm
 python-dotenv
-duckduckgo-search
+ddgs
